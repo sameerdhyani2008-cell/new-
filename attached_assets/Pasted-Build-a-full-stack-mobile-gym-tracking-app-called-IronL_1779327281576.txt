@@ -1,0 +1,238 @@
+Build a full-stack mobile gym tracking app called "IronLog" using React Native with Expo (compatible with both iOS App Store and Google Play Store). This is a dedicated gym workout tracker with AI-powered coaching. Here are the complete specifications:
+
+---
+
+## TECH STACK
+- Frontend: React Native + Expo (SDK 51+)
+- Navigation: Expo Router (file-based routing)
+- State Management: Zustand
+- Database: SQLite (via expo-sqlite) for local storage + Supabase for cloud sync
+- Charts: Victory Native or react-native-gifted-charts
+- AI: OpenAI API (GPT-4o) or Anthropic Claude API
+- Auth: Supabase Auth (email + Google OAuth)
+- Styling: NativeWind (Tailwind for React Native)
+- Notifications: Expo Notifications
+
+---
+
+## SCREENS & NAVIGATION
+
+### 1. Onboarding Flow (screens/onboarding/)
+- Welcome screen with app logo and tagline
+- User profile setup: name, age, weight, height, fitness goal (Build Muscle / Lose Fat / Improve Strength / General Fitness), experience level (Beginner / Intermediate / Advanced)
+- Notification permission request
+- This data is sent to the AI to personalize all workout recommendations
+
+### 2. Home Screen (screens/index.tsx)
+- Personalized greeting with user name
+- Streak counter with fire emoji (consecutive workout days)
+- Weekly summary cards: total sessions, total volume lifted (kg), % change vs last week
+- "Today's Workout" card (AI-generated, shows muscle group, number of exercises, estimated duration)
+- Start Workout button that launches the active workout session
+- AI Coach tip of the day (short insight based on recent logs)
+- Quick-log button for adding a standalone exercise
+
+### 3. Active Workout Session Screen (screens/workout/active.tsx)
+This is the CORE screen of the app. When a workout is started:
+- Show workout name and timer (counting up)
+- List all exercises in the plan, one at a time or all visible
+- For each exercise show:
+  - Exercise name + muscle group badge
+  - Previous session data (last weight and reps used, shown in gray)
+  - Set tracker: rows for each set showing [Set #] [kg input] [reps input] [✓ complete button]
+  - "Add Set" button to add an extra set
+  - Rest timer: auto-starts after completing a set (default 90 seconds, user can adjust)
+  - Notes field per exercise
+- "Finish Workout" button that saves everything and shows summary
+
+### 4. Exercise Log Screen (screens/log.tsx)
+- Calendar view showing which days had workouts (green dots)
+- List of past workout sessions, most recent first
+- Each session card shows: date, workout name, duration, total volume
+- Tap a session to see full detail: every exercise, every set, weight, reps
+- Search and filter by exercise name or date range
+
+### 5. Progress & Analytics Screen (screens/progress.tsx)
+This screen shows visual graphs and stats. Include:
+
+a) Personal Records (PRs) Section:
+   - List of all exercises with their all-time best weight
+   - Show date when PR was set
+
+b) Exercise Progress Charts:
+   - Dropdown to select any exercise
+   - Line chart showing max weight over time (weekly/monthly toggle)
+   - Bar chart showing total volume per week
+   - Show trend line and percentage improvement
+
+c) Body Stats Charts:
+   - Track bodyweight over time (user inputs manually)
+   - Line chart for bodyweight trend
+
+d) Muscle Group Heatmap:
+   - Human body silhouette (front/back)
+   - Color intensity shows which muscles were trained most this week/month
+
+e) Monthly Report Card:
+   - Total workouts, total volume, average session duration
+   - Most trained muscle group
+   - Biggest strength gain (exercise + % increase)
+
+### 6. AI Coach Screen (screens/ai-coach.tsx)
+This is the AI-powered workout designer. It includes:
+
+a) Chat Interface:
+   - Chat-style UI where user can talk to their AI coach
+   - AI remembers past workouts (send last 4 weeks of data as context)
+   - User can ask things like: "Design me a 4-day PPL split", "What should I do tomorrow?", "Why aren't my arms growing?"
+   - AI responses are formatted with exercise names, sets, reps in a structured card view
+
+b) Workout Plan Generator:
+   - User selects: days per week (3/4/5/6), focus area, available equipment (Full Gym / Dumbbells Only / Barbell Only / Bodyweight)
+   - AI generates a full weekly plan with named workouts (Push/Pull/Legs or Bro Split etc.)
+   - Each workout has 5-7 exercises with recommended sets, reps, and rest times
+   - User can save the plan and it becomes their weekly template
+
+c) Auto-Progression Logic:
+   - After each workout, AI analyzes performance
+   - If user completed all reps at a given weight, it suggests increasing weight by 2.5kg next session
+   - Shows a "Ready to progress?" notification
+
+### 7. Profile Screen (screens/profile.tsx)
+- User photo, name, stats (height, weight, goal)
+- Edit profile details
+- Settings: rest timer default duration, weight unit (kg/lbs), dark/light mode
+- Workout reminders: set days and time for push notifications
+- Export data as CSV
+- Sign out
+
+---
+
+## DATABASE SCHEMA (SQLite + Supabase)
+
+Tables:
+- users: id, name, email, age, weight_kg, height_cm, goal, experience_level, created_at
+- workout_plans: id, user_id, name, created_by_ai, created_at
+- workout_sessions: id, user_id, plan_id, name, started_at, ended_at, notes
+- exercises: id, name, muscle_group, secondary_muscles, equipment, instructions
+- session_exercises: id, session_id, exercise_id, order_index, notes
+- sets: id, session_exercise_id, set_number, weight_kg, reps, completed, rest_seconds, completed_at
+- body_stats: id, user_id, weight_kg, body_fat_percent, recorded_at
+- personal_records: id, user_id, exercise_id, weight_kg, reps, achieved_at
+
+Pre-seed the exercises table with 80+ common gym exercises organized by muscle group (Chest, Back, Shoulders, Arms, Legs, Core, Cardio).
+
+---
+
+## AI INTEGRATION
+
+Use OpenAI GPT-4o API (or Claude claude-sonnet-4-20250514). Create a service file `services/ai.ts`:
+
+When generating a workout plan, send this context to the AI:
+- User profile (age, weight, goal, experience level, available equipment)
+- Past 4 weeks of workout history (which exercises, what weights, what volume)
+- Current workout plan structure
+
+Prompt the AI to return structured JSON like:
+{
+  "plan_name": "Push Pull Legs",
+  "workouts": [
+    {
+      "day": "Monday",
+      "name": "Push Day",
+      "exercises": [
+        { "name": "Bench Press", "sets": 4, "reps": "6-8", "rest_seconds": 120, "notes": "Focus on chest stretch" }
+      ]
+    }
+  ]
+}
+
+Parse this JSON and save it directly to the database as a workout plan.
+
+---
+
+## UI/UX DESIGN
+
+Theme: Dark gym aesthetic
+- Background: #0A0A0A (near black)
+- Cards: #1A1A1A with #2A2A2A borders
+- Primary accent: #FF4444 (red/orange)
+- Secondary accent: #FF6600 (orange for progress)
+- AI elements: #4488FF (blue)
+- Text: #FFFFFF primary, #888888 secondary
+- Font: System font with heavy weights for numbers
+
+Design principles:
+- Large tap targets (minimum 44px height for all buttons)
+- Set inputs should be large and easy to type into during a workout
+- All weight/rep inputs should auto-select text on focus
+- Haptic feedback on set completion (expo-haptics)
+- Satisfying animation when completing a set (checkmark pulse)
+- Progress bars and animated charts
+
+---
+
+## KEY FEATURES TO IMPLEMENT
+
+1. Plate Calculator: When user enters target weight, show which plates to add to each side of the bar
+2. One Rep Max Calculator: Automatically calculate estimated 1RM from any set (weight × reps × 0.0333 + weight)
+3. Workout Templates: Save any completed workout as a reusable template
+4. Exercise Swap: If an exercise isn't available, tap to swap it with an alternative for the same muscle group
+5. Volume Tracking: Total tonnage per session automatically calculated and stored
+6. Offline Mode: All core features work without internet; sync when connection restored
+7. Apple Health / Google Fit integration: Sync workout data to health apps
+
+---
+
+## FOLDER STRUCTURE
+
+/app
+  /(auth)
+    login.tsx
+    signup.tsx
+  /(tabs)
+    index.tsx (Home)
+    log.tsx
+    progress.tsx
+    ai-coach.tsx
+    profile.tsx
+  /workout
+    active.tsx
+    summary.tsx
+/components
+  /workout
+    SetRow.tsx
+    ExerciseCard.tsx
+    RestTimer.tsx
+  /charts
+    ProgressLineChart.tsx
+    VolumeBarChart.tsx
+    MuscleHeatmap.tsx
+  /ai
+    ChatBubble.tsx
+    WorkoutPlanCard.tsx
+/services
+  ai.ts
+  database.ts
+  notifications.ts
+  healthKit.ts
+/store
+  workoutStore.ts
+  userStore.ts
+/constants
+  exercises.ts (seed data)
+  theme.ts
+
+---
+
+## DELIVERABLES
+
+1. Fully working Expo app that runs on both iOS simulator and Android emulator
+2. All screens implemented with real functionality (not placeholder screens)
+3. SQLite database with proper migrations
+4. AI workout generation connected to a real API
+5. All charts showing real data from the database
+6. App icon and splash screen with gym theme
+7. README with setup instructions including how to add API keys
+
+Start by setting up the Expo project, installing all dependencies, creating the database schema, seeding exercise data, then implement screens in this order: Active Workout → Home → Progress → AI Coach → Profile → Onboarding.
