@@ -18,6 +18,7 @@ import type { UserProfile } from "@/types";
 const GOALS: UserProfile["goal"][] = [
   "Build Muscle",
   "Lose Fat",
+  "Recomposition",
   "Improve Strength",
   "General Fitness",
 ];
@@ -37,24 +38,65 @@ export default function ProfileSetupScreen() {
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
   const [goal, setGoal] = useState<UserProfile["goal"]>("Build Muscle");
-  const [level, setLevel] =
-    useState<UserProfile["experienceLevel"]>("Beginner");
+  const [level, setLevel] = useState<UserProfile["experienceLevel"]>("Beginner");
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
+  const [heightUnit, setHeightUnit] = useState<"cm" | "in">("cm");
   const [error, setError] = useState("");
+
+  const handleWeightUnitChange = (unit: "kg" | "lbs") => {
+    if (unit === weightUnit) return;
+    if (weight) {
+      const num = parseFloat(weight);
+      if (!isNaN(num)) {
+        if (unit === "lbs") {
+          setWeight((num * 2.20462).toFixed(1));
+        } else {
+          setWeight((num / 2.20462).toFixed(1));
+        }
+      }
+    }
+    setWeightUnit(unit);
+  };
+
+  const handleHeightUnitChange = (unit: "cm" | "in") => {
+    if (unit === heightUnit) return;
+    if (height) {
+      const num = parseFloat(height);
+      if (!isNaN(num)) {
+        if (unit === "in") {
+          setHeight((num / 2.54).toFixed(1));
+        } else {
+          setHeight((num * 2.54).toFixed(1));
+        }
+      }
+    }
+    setHeightUnit(unit);
+  };
 
   const handleDone = async () => {
     if (!name.trim() || !age || !weight || !height) {
       setError("Please fill in all fields.");
       return;
     }
+    const weightNum = parseFloat(weight);
+    const heightNum = parseFloat(height);
+    if (isNaN(weightNum) || isNaN(heightNum)) {
+      setError("Please enter valid numbers for weight and height.");
+      return;
+    }
+    const weight_kg = weightUnit === "lbs" ? weightNum / 2.20462 : weightNum;
+    const height_cm = heightUnit === "in" ? heightNum * 2.54 : heightNum;
+
     const profile: UserProfile = {
       id: Date.now().toString(),
       name: name.trim(),
       age: parseInt(age, 10),
-      weight_kg: parseFloat(weight),
-      height_cm: parseFloat(height),
+      weight_kg: parseFloat(weight_kg.toFixed(2)),
+      height_cm: parseFloat(height_cm.toFixed(1)),
       goal,
       experienceLevel: level,
-      weightUnit: "kg",
+      weightUnit,
+      heightUnit,
       restDuration: 90,
     };
     await saveProfile(profile);
@@ -102,10 +144,7 @@ export default function ProfileSetupScreen() {
             placeholderTextColor={colors.mutedForeground}
           />
         </Field>
-      </View>
-
-      <View style={styles.row}>
-        <Field label="Age" flex={1}>
+        <Field label="Age" flex={0.5}>
           <TextInput
             style={[
               styles.input,
@@ -122,7 +161,79 @@ export default function ProfileSetupScreen() {
             placeholderTextColor={colors.mutedForeground}
           />
         </Field>
-        <Field label="Weight (kg)" flex={1}>
+      </View>
+
+      {/* Unit toggles */}
+      <View style={styles.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            WEIGHT UNIT
+          </Text>
+          <View style={styles.unitToggle}>
+            {(["kg", "lbs"] as const).map((u) => (
+              <TouchableOpacity
+                key={u}
+                onPress={() => handleWeightUnitChange(u)}
+                style={[
+                  styles.unitBtn,
+                  {
+                    backgroundColor:
+                      weightUnit === u ? colors.primary : colors.card,
+                    borderColor:
+                      weightUnit === u ? colors.primary : colors.border,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.unitBtnText,
+                    { color: weightUnit === u ? "#fff" : colors.foreground },
+                  ]}
+                >
+                  {u}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            HEIGHT UNIT
+          </Text>
+          <View style={styles.unitToggle}>
+            {(["cm", "in"] as const).map((u) => (
+              <TouchableOpacity
+                key={u}
+                onPress={() => handleHeightUnitChange(u)}
+                style={[
+                  styles.unitBtn,
+                  {
+                    backgroundColor:
+                      heightUnit === u ? colors.primary : colors.card,
+                    borderColor:
+                      heightUnit === u ? colors.primary : colors.border,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.unitBtnText,
+                    { color: heightUnit === u ? "#fff" : colors.foreground },
+                  ]}
+                >
+                  {u}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Weight & Height inputs */}
+      <View style={styles.row}>
+        <Field label={`Weight (${weightUnit})`} flex={1}>
           <TextInput
             style={[
               styles.input,
@@ -134,12 +245,12 @@ export default function ProfileSetupScreen() {
             ]}
             value={weight}
             onChangeText={setWeight}
-            placeholder="80"
+            placeholder={weightUnit === "kg" ? "80" : "176"}
             keyboardType="decimal-pad"
             placeholderTextColor={colors.mutedForeground}
           />
         </Field>
-        <Field label="Height (cm)" flex={1}>
+        <Field label={`Height (${heightUnit})`} flex={1}>
           <TextInput
             style={[
               styles.input,
@@ -151,7 +262,7 @@ export default function ProfileSetupScreen() {
             ]}
             value={height}
             onChangeText={setHeight}
-            placeholder="178"
+            placeholder={heightUnit === "cm" ? "178" : "70"}
             keyboardType="decimal-pad"
             placeholderTextColor={colors.mutedForeground}
           />
@@ -181,8 +292,7 @@ export default function ProfileSetupScreen() {
                 style={[
                   styles.chipText,
                   {
-                    color:
-                      goal === g ? "#fff" : colors.foreground,
+                    color: goal === g ? "#fff" : colors.foreground,
                   },
                 ]}
               >
@@ -277,6 +387,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 14,
     fontSize: 15,
+  },
+  unitToggle: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  unitBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unitBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   chips: {
     flexDirection: "row",

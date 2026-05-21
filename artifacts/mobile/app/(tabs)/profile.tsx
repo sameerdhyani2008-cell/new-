@@ -6,7 +6,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,6 +17,21 @@ import { useColors } from "@/hooks/useColors";
 import * as db from "@/services/database";
 import { useUser } from "@/store/UserContext";
 
+function displayWeight(weight_kg: number, unit: "kg" | "lbs") {
+  if (unit === "lbs") return `${(weight_kg * 2.20462).toFixed(1)} lbs`;
+  return `${weight_kg.toFixed(1)} kg`;
+}
+
+function displayHeight(height_cm: number, unit: "cm" | "in") {
+  if (unit === "in") {
+    const totalIn = height_cm / 2.54;
+    const ft = Math.floor(totalIn / 12);
+    const inches = (totalIn % 12).toFixed(0);
+    return `${ft}'${inches}"`;
+  }
+  return `${height_cm.toFixed(0)} cm`;
+}
+
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -28,6 +42,9 @@ export default function ProfileScreen() {
   );
   const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">(
     profile?.weightUnit ?? "kg"
+  );
+  const [heightUnit, setHeightUnit] = useState<"cm" | "in">(
+    profile?.heightUnit ?? "cm"
   );
   const [edited, setEdited] = useState(false);
 
@@ -43,6 +60,7 @@ export default function ProfileScreen() {
       ...profile,
       restDuration: parseInt(restDuration, 10) || 90,
       weightUnit,
+      heightUnit,
     });
     setEdited(false);
   };
@@ -107,7 +125,7 @@ export default function ProfileScreen() {
             {profile.goal} · {profile.experienceLevel}
           </Text>
           <Text style={[styles.profileStats, { color: colors.mutedForeground }]}>
-            {profile.height_cm}cm · {profile.weight_kg}kg
+            {displayHeight(profile.height_cm, heightUnit)} · {displayWeight(profile.weight_kg, weightUnit)}
           </Text>
         </View>
       </View>
@@ -128,9 +146,13 @@ export default function ProfileScreen() {
         <StatItem
           label="Total Volume"
           value={
-            totalVolume >= 1000
+            weightUnit === "lbs"
+              ? totalVolume * 2.20462 >= 1000
+                ? `${((totalVolume * 2.20462) / 1000).toFixed(1)}k lbs`
+                : `${(totalVolume * 2.20462).toFixed(0)} lbs`
+              : totalVolume >= 1000
               ? `${(totalVolume / 1000).toFixed(1)}t`
-              : `${totalVolume}kg`
+              : `${totalVolume} kg`
           }
           colors={colors}
         />
@@ -175,6 +197,39 @@ export default function ProfileScreen() {
                   style={[
                     styles.unitBtnText,
                     { color: weightUnit === u ? "#fff" : colors.foreground },
+                  ]}
+                >
+                  {u}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </SettingRow>
+
+        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+
+        <SettingRow label="Height Unit" colors={colors}>
+          <View style={styles.toggleRow}>
+            {(["cm", "in"] as const).map((u) => (
+              <TouchableOpacity
+                key={u}
+                onPress={() => {
+                  setHeightUnit(u);
+                  setEdited(true);
+                }}
+                style={[
+                  styles.unitBtn,
+                  {
+                    backgroundColor:
+                      heightUnit === u ? colors.primary : colors.muted,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.unitBtnText,
+                    { color: heightUnit === u ? "#fff" : colors.foreground },
                   ]}
                 >
                   {u}

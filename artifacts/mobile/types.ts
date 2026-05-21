@@ -4,9 +4,10 @@ export interface UserProfile {
   age: number;
   weight_kg: number;
   height_cm: number;
-  goal: "Build Muscle" | "Lose Fat" | "Improve Strength" | "General Fitness";
+  goal: "Build Muscle" | "Lose Fat" | "Recomposition" | "Improve Strength" | "General Fitness";
   experienceLevel: "Beginner" | "Intermediate" | "Advanced";
   weightUnit: "kg" | "lbs";
+  heightUnit: "cm" | "in";
   restDuration: number;
 }
 
