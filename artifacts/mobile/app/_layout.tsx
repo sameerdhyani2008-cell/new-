@@ -6,6 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -14,16 +15,27 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { UserProvider } from "@/store/UserContext";
+import { WorkoutProvider } from "@/store/WorkoutContext";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding/profile" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="workout/active"
+        options={{ headerShown: false, presentation: "fullScreenModal" }}
+      />
+      <Stack.Screen name="workout/summary" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -48,9 +60,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView>
+          <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
-              <RootLayoutNav />
+              <UserProvider>
+                <WorkoutProvider>
+                  <RootLayoutNav />
+                </WorkoutProvider>
+              </UserProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>
