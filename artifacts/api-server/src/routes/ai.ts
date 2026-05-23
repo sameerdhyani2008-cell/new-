@@ -44,7 +44,7 @@ router.post("/chat", async (req, res) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 8192,
         stream: true,
         system: systemPrompt ?? "You are an expert fitness coach.",
@@ -162,7 +162,7 @@ Return ONLY valid JSON in this exact format:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -176,14 +176,27 @@ Return ONLY valid JSON in this exact format:
     const data = await response.json() as {
       content: Array<{ type: string; text: string }>;
     };
-    const text = data.content?.[0]?.text ?? "";
+    let text = data.content?.[0]?.text ?? "";
+
+    // Strip markdown code fences if present
+    text = text.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
-    if (jsonMatch) {
+    if (!jsonMatch) {
+      res.status(500).json({ error: "AI did not return valid JSON", preview: text.slice(0, 300) });
+      return;
+    }
+
+    try {
       const parsed = JSON.parse(jsonMatch[0]) as { plan_name: string; workouts: unknown[] };
+      if (!parsed.workouts || !Array.isArray(parsed.workouts)) {
+        res.status(500).json({ error: "AI response missing workouts array" });
+        return;
+      }
       res.json(parsed);
-    } else {
-      res.status(500).json({ error: "Could not parse AI response" });
+    } catch {
+      res.status(500).json({ error: "JSON parse failed", preview: jsonMatch[0].slice(0, 300) });
     }
   } catch (err) {
     res.status(500).json({ error: "Failed to generate plan" });

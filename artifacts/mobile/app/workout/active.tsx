@@ -124,7 +124,10 @@ export default function ActiveWorkoutScreen() {
 
     await addSession(session);
     cancelWorkout();
-    router.replace("/workout/summary");
+    router.replace({
+      pathname: "/workout/summary",
+      params: { sessionId: session.id },
+    });
   };
 
   const filteredExercises = useMemo(() => {
@@ -248,8 +251,11 @@ export default function ActiveWorkoutScreen() {
             restDuration={profile?.restDuration ?? 90}
             onUpdateSet={updateSet}
             onCompleteSet={(exI, setI) => {
+              const wasCompleted = activeSession?.exercises[exI]?.sets[setI]?.completed;
               completeSet(exI, setI);
-              startRestTimer(exI, profile?.restDuration ?? 90);
+              if (!wasCompleted) {
+                startRestTimer(exI, profile?.restDuration ?? 90);
+              }
             }}
             onAddSet={addSet}
             onUpdateNotes={updateNotes}

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -14,36 +14,23 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EXERCISES } from "@/constants/exercises";
 import { useColors } from "@/hooks/useColors";
+import { getPlans } from "@/services/database";
 import { useUser } from "@/store/UserContext";
 import { useWorkout } from "@/store/WorkoutContext";
-import type { ActiveExercise } from "@/types";
-
-const QUICK_WORKOUTS = [
-  {
-    name: "Push Day",
-    exercises: ["chest_01", "chest_02", "shoulders_01", "triceps_01", "triceps_02"],
-  },
-  {
-    name: "Pull Day",
-    exercises: ["back_01", "back_02", "back_04", "biceps_01", "biceps_03"],
-  },
-  {
-    name: "Leg Day",
-    exercises: ["quads_01", "quads_03", "hams_01", "hams_02", "calves_01"],
-  },
-  {
-    name: "Upper Body",
-    exercises: ["chest_01", "back_04", "shoulders_01", "biceps_01", "triceps_03"],
-  },
-];
+import type { ActiveExercise, PlannedWorkout, WorkoutPlan } from "@/types";
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { profile, streak, weeklyStats, sessions } = useUser();
   const { startWorkout, activeSession } = useWorkout();
+  const [savedPlans, setSavedPlans] = useState<WorkoutPlan[]>([]);
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  useEffect(() => {
+    getPlans().then(setSavedPlans);
+  }, []);
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -62,22 +49,24 @@ export default function HomeScreen() {
     );
   }, [weeklyStats]);
 
-  const handleQuickStart = (plan: (typeof QUICK_WORKOUTS)[0]) => {
-    const exList = plan.exercises.map((id): ActiveExercise => {
-      const ex = EXERCISES.find((e) => e.id === id)!;
+  const handleStartPlanWorkout = (plan: WorkoutPlan, workout: PlannedWorkout) => {
+    const exList: ActiveExercise[] = workout.exercises.map((pe) => {
+      const found = EXERCISES.find(
+        (e) => e.name.toLowerCase() === pe.name.toLowerCase()
+      );
       return {
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        muscleGroup: ex.muscleGroup,
-        notes: "",
-        sets: [
-          { weight: "", reps: "", completed: false },
-          { weight: "", reps: "", completed: false },
-          { weight: "", reps: "", completed: false },
-        ],
+        exerciseId: found?.id ?? pe.name.toLowerCase().replace(/\s+/g, "_"),
+        exerciseName: pe.name,
+        muscleGroup: found?.muscleGroup ?? "Other",
+        notes: pe.notes ?? "",
+        sets: Array.from({ length: pe.sets }, () => ({
+          weight: "",
+          reps: "",
+          completed: false,
+        })),
       };
     });
-    startWorkout(plan.name, exList);
+    startWorkout(workout.name, exList);
     router.push("/workout/active");
   };
 
@@ -168,44 +157,62 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Quick Start */}
+      {/* My Plans */}
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Quick Start
+        My Plans
       </Text>
-      {QUICK_WORKOUTS.map((plan) => (
+
+      {savedPlans.length === 0 ? (
         <TouchableOpacity
-          key={plan.name}
-          onPress={() => handleQuickStart(plan)}
-          activeOpacity={0.8}
+          onPress={() => router.push("/(tabs)/ai-coach")}
           style={[
-            styles.workoutCard,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              borderRadius: colors.radius,
-              marginHorizontal: 20,
-              marginBottom: 10,
-            },
+            styles.emptyPlansCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
           ]}
+          activeOpacity={0.7}
         >
-          <View>
-            <Text style={[styles.workoutName, { color: colors.foreground }]}>
-              {plan.name}
+          <Feather name="plus-circle" size={24} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.emptyPlansTitle, { color: colors.foreground }]}>
+              No plans yet
             </Text>
-            <Text style={[styles.workoutSub, { color: colors.mutedForeground }]}>
-              {plan.exercises.length} exercises
+            <Text style={[styles.emptyPlansSub, { color: colors.mutedForeground }]}>
+              Tap to create one with AI Coach
             </Text>
           </View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
+      ) : (
+        savedPlans.map((plan) => (
           <View
+            key={plan.id}
             style={[
-              styles.startBtn,
-              { backgroundColor: colors.primary },
+              styles.planCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <Feather name="play" size={16} color="#fff" />
+            <Text style={[styles.planName, { color: colors.foreground }]}>
+              {plan.name}
+            </Text>
+            <Text style={[styles.planMeta, { color: colors.mutedForeground }]}>
+              {plan.workouts.length} days · {plan.createdByAI ? "AI generated" : "Custom"}
+            </Text>
+            {plan.workouts.map((workout, wi) => (
+              <TouchableOpacity
+                key={wi}
+                onPress={() => handleStartPlanWorkout(plan, workout)}
+                style={[styles.dayBtn, { backgroundColor: colors.primary }]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.dayBtnText, { color: "#fff" }]}>
+                  {workout.name}
+                </Text>
+                <Feather name="play" size={14} color="#fff" />
+              </TouchableOpacity>
+            ))}
           </View>
-        </TouchableOpacity>
-      ))}
+        ))
+      )}
 
       {/* Custom workout */}
       <TouchableOpacity
@@ -218,6 +225,7 @@ export default function HomeScreen() {
           styles.customBtn,
           {
             marginHorizontal: 20,
+            marginTop: 12,
             borderColor: colors.border,
             borderRadius: colors.radius,
           },
@@ -322,11 +330,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 24,
   },
-  statCard: {
-    flex: 1,
-    padding: 14,
-    borderWidth: 1,
-  },
+  statCard: { flex: 1, padding: 14, borderWidth: 1 },
   statValue: { fontSize: 22, fontWeight: "800", marginBottom: 2 },
   statLabel: { fontSize: 12, fontWeight: "600" },
   statSub: { fontSize: 10, marginTop: 2 },
@@ -336,22 +340,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 12,
   },
-  workoutCard: {
+  emptyPlansCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+    marginHorizontal: 20,
+  },
+  emptyPlansTitle: { fontSize: 15, fontWeight: "700" },
+  emptyPlansSub: { fontSize: 13, marginTop: 2 },
+  planCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 10,
+  },
+  planName: { fontSize: 16, fontWeight: "800" },
+  planMeta: { fontSize: 12, marginTop: -4 },
+  dayBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 16,
-    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
   },
-  workoutName: { fontSize: 16, fontWeight: "700", marginBottom: 3 },
-  workoutSub: { fontSize: 13 },
-  startBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  dayBtnText: { fontSize: 14, fontWeight: "700", flex: 1 },
   customBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -360,7 +379,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: "dashed",
     gap: 8,
-    marginTop: 4,
   },
   customBtnText: { fontSize: 15, fontWeight: "600" },
   activeBanner: {
@@ -377,10 +395,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   activeBannerName: { fontSize: 18, fontWeight: "800", color: "#fff" },
-  recentCard: {
-    padding: 14,
-    borderWidth: 1,
-  },
+  recentCard: { padding: 14, borderWidth: 1 },
   recentName: { fontSize: 15, fontWeight: "700", marginBottom: 3 },
   recentSub: { fontSize: 12 },
 });

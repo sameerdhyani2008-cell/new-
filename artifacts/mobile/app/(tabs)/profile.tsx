@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -14,7 +15,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
-import * as db from "@/services/database";
 import { useUser } from "@/store/UserContext";
 
 function displayWeight(weight_kg: number, unit: "kg" | "lbs") {
@@ -35,7 +35,7 @@ function displayHeight(height_cm: number, unit: "cm" | "in") {
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { profile, sessions, weeklyStats, saveProfile } = useUser();
+  const { profile, sessions, saveProfile } = useUser();
 
   const [restDuration, setRestDuration] = useState(
     String(profile?.restDuration ?? 90)
@@ -65,6 +65,27 @@ export default function ProfileScreen() {
     setEdited(false);
   };
 
+  const handleLogOut = () => {
+    Alert.alert(
+      "Log Out",
+      "You will be taken back to the setup screen. Your workout data will be kept.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "default",
+          onPress: async () => {
+            await AsyncStorage.multiRemove([
+              "@ironlog:user_profile",
+              "@ironlog:onboarding_complete",
+            ]);
+            router.replace("/onboarding");
+          },
+        },
+      ]
+    );
+  };
+
   const handleReset = () => {
     Alert.alert(
       "Reset All Data",
@@ -75,7 +96,8 @@ export default function ProfileScreen() {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            await db.markOnboardingComplete();
+            await AsyncStorage.clear();
+            router.replace("/onboarding");
           },
         },
       ]
@@ -137,11 +159,7 @@ export default function ProfileScreen() {
           { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
         ]}
       >
-        <StatItem
-          label="Workouts"
-          value={String(sessions.length)}
-          colors={colors}
-        />
+        <StatItem label="Workouts" value={String(sessions.length)} colors={colors} />
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <StatItem
           label="Total Volume"
@@ -157,11 +175,7 @@ export default function ProfileScreen() {
           colors={colors}
         />
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <StatItem
-          label="Hours"
-          value={(totalDuration / 60).toFixed(1)}
-          colors={colors}
-        />
+        <StatItem label="Hours" value={(totalDuration / 60).toFixed(1)} colors={colors} />
       </View>
 
       {/* Settings */}
@@ -180,25 +194,14 @@ export default function ProfileScreen() {
             {(["kg", "lbs"] as const).map((u) => (
               <TouchableOpacity
                 key={u}
-                onPress={() => {
-                  setWeightUnit(u);
-                  setEdited(true);
-                }}
+                onPress={() => { setWeightUnit(u); setEdited(true); }}
                 style={[
                   styles.unitBtn,
-                  {
-                    backgroundColor:
-                      weightUnit === u ? colors.primary : colors.muted,
-                  },
+                  { backgroundColor: weightUnit === u ? colors.primary : colors.muted },
                 ]}
                 activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.unitBtnText,
-                    { color: weightUnit === u ? "#fff" : colors.foreground },
-                  ]}
-                >
+                <Text style={[styles.unitBtnText, { color: weightUnit === u ? "#fff" : colors.foreground }]}>
                   {u}
                 </Text>
               </TouchableOpacity>
@@ -213,25 +216,14 @@ export default function ProfileScreen() {
             {(["cm", "in"] as const).map((u) => (
               <TouchableOpacity
                 key={u}
-                onPress={() => {
-                  setHeightUnit(u);
-                  setEdited(true);
-                }}
+                onPress={() => { setHeightUnit(u); setEdited(true); }}
                 style={[
                   styles.unitBtn,
-                  {
-                    backgroundColor:
-                      heightUnit === u ? colors.primary : colors.muted,
-                  },
+                  { backgroundColor: heightUnit === u ? colors.primary : colors.muted },
                 ]}
                 activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.unitBtnText,
-                    { color: heightUnit === u ? "#fff" : colors.foreground },
-                  ]}
-                >
+                <Text style={[styles.unitBtnText, { color: heightUnit === u ? "#fff" : colors.foreground }]}>
                   {u}
                 </Text>
               </TouchableOpacity>
@@ -253,16 +245,11 @@ export default function ProfileScreen() {
                 },
               ]}
               value={restDuration}
-              onChangeText={(v) => {
-                setRestDuration(v);
-                setEdited(true);
-              }}
+              onChangeText={(v) => { setRestDuration(v); setEdited(true); }}
               keyboardType="number-pad"
               maxLength={3}
             />
-            <Text style={[styles.restUnit, { color: colors.mutedForeground }]}>
-              sec
-            </Text>
+            <Text style={[styles.restUnit, { color: colors.mutedForeground }]}>sec</Text>
           </View>
         </SettingRow>
 
@@ -274,18 +261,31 @@ export default function ProfileScreen() {
               style={[styles.saveBtn, { backgroundColor: colors.primary }]}
               activeOpacity={0.85}
             >
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+              <Text style={styles.saveBtnText}>Save Settings</Text>
             </TouchableOpacity>
           </>
         )}
       </View>
 
+      {/* Log Out */}
+      <TouchableOpacity
+        onPress={handleLogOut}
+        style={[
+          styles.logoutBtn,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+        activeOpacity={0.7}
+      >
+        <Feather name="log-out" size={16} color={colors.mutedForeground} />
+        <Text style={[styles.logoutText, { color: colors.mutedForeground }]}>
+          Log Out
+        </Text>
+      </TouchableOpacity>
+
+      {/* Reset */}
       <TouchableOpacity
         onPress={handleReset}
-        style={[
-          styles.dangerBtn,
-          { borderColor: colors.destructive + "44" },
-        ]}
+        style={[styles.dangerBtn, { borderColor: colors.destructive + "44" }]}
         activeOpacity={0.8}
       >
         <Feather name="trash-2" size={16} color={colors.destructive} />
@@ -308,12 +308,8 @@ function StatItem({
 }) {
   return (
     <View style={styles.statItem}>
-      <Text style={[styles.statValue, { color: colors.foreground }]}>
-        {value}
-      </Text>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-        {label}
-      </Text>
+      <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
     </View>
   );
 }
@@ -329,9 +325,7 @@ function SettingRow({
 }) {
   return (
     <View style={styles.settingRow}>
-      <Text style={[styles.settingLabel, { color: colors.foreground }]}>
-        {label}
-      </Text>
+      <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
       {children}
     </View>
   );
@@ -358,11 +352,7 @@ const styles = StyleSheet.create({
   profileName: { fontSize: 20, fontWeight: "800", marginBottom: 3 },
   profileGoal: { fontSize: 13, fontWeight: "600", marginBottom: 2 },
   profileStats: { fontSize: 12 },
-  statsGrid: {
-    flexDirection: "row",
-    padding: 16,
-    borderWidth: 1,
-  },
+  statsGrid: { flexDirection: "row", padding: 16, borderWidth: 1 },
   statItem: { flex: 1, alignItems: "center" },
   statValue: { fontSize: 24, fontWeight: "800", marginBottom: 3 },
   statLabel: { fontSize: 11, fontWeight: "500" },
@@ -384,11 +374,7 @@ const styles = StyleSheet.create({
   settingLabel: { fontSize: 15, fontWeight: "500" },
   separator: { height: StyleSheet.hairlineWidth },
   toggleRow: { flexDirection: "row", gap: 6 },
-  unitBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
+  unitBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   unitBtnText: { fontSize: 13, fontWeight: "700" },
   restInput: { flexDirection: "row", alignItems: "center", gap: 6 },
   restTextInput: {
@@ -403,12 +389,21 @@ const styles = StyleSheet.create({
   restUnit: { fontSize: 13 },
   saveBtn: {
     margin: 16,
-    height: 44,
+    height: 48,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   saveBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  logoutText: { fontSize: 15, fontWeight: "600" },
   dangerBtn: {
     flexDirection: "row",
     alignItems: "center",

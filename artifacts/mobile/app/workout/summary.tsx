@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React from "react";
 import {
   Platform,
@@ -19,8 +19,12 @@ export default function SummaryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { sessions } = useUser();
+  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
 
-  const lastSession = sessions[0];
+  // Find by ID first (passed via params), fall back to most recent
+  const lastSession = sessionId
+    ? (sessions.find((s) => s.id === sessionId) ?? sessions[0])
+    : sessions[0];
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 20;
   const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 0) + 40;
@@ -66,7 +70,7 @@ export default function SummaryScreen() {
       }}
     >
       <View style={styles.heroSection}>
-        <Text style={[styles.heroEmoji, { color: colors.primary }]}>
+        <Text style={[styles.heroLabel, { color: colors.primary }]}>
           WORKOUT COMPLETE
         </Text>
         <Text style={[styles.heroTitle, { color: colors.foreground }]}>
@@ -112,9 +116,7 @@ export default function SummaryScreen() {
             },
           ]}
         >
-          <Text
-            style={[styles.bestLabel, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.bestLabel, { color: colors.mutedForeground }]}>
             TOP LIFT
           </Text>
           <Text style={[styles.bestExercise, { color: colors.foreground }]}>
@@ -123,12 +125,9 @@ export default function SummaryScreen() {
           <Text style={[styles.bestWeight, { color: colors.primary }]}>
             {maxSet.weight}kg × {maxSet.reps}
           </Text>
-          <Text
-            style={[styles.bestOrm, { color: colors.mutedForeground }]}
-          >
+          <Text style={[styles.bestOrm, { color: colors.mutedForeground }]}>
             Est. 1RM:{" "}
-            {Math.round(maxSet.weight * maxSet.reps * 0.0333 + maxSet.weight)}
-            kg
+            {Math.round(maxSet.weight * maxSet.reps * 0.0333 + maxSet.weight)}kg
           </Text>
         </View>
       )}
@@ -185,35 +184,15 @@ function StatItem({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   heroSection: { alignItems: "center", gap: 8 },
-  heroEmoji: {
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 3,
-  },
+  heroLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 3 },
   heroTitle: { fontSize: 28, fontWeight: "900", textAlign: "center" },
-  statsCard: {
-    flexDirection: "row",
-    padding: 20,
-  },
+  statsCard: { flexDirection: "row", padding: 20 },
   stat: { flex: 1, alignItems: "center" },
-  statDivider: {
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.3)",
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#fff",
-    marginBottom: 4,
-  },
+  statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.3)" },
+  statValue: { fontSize: 22, fontWeight: "900", color: "#fff", marginBottom: 4 },
   statLabel: { fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: "600" },
   bestCard: { padding: 20, borderWidth: 1, alignItems: "center", gap: 4 },
-  bestLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 2,
-    marginBottom: 4,
-  },
+  bestLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 2, marginBottom: 4 },
   bestExercise: { fontSize: 18, fontWeight: "700" },
   bestWeight: { fontSize: 32, fontWeight: "900" },
   bestOrm: { fontSize: 13 },

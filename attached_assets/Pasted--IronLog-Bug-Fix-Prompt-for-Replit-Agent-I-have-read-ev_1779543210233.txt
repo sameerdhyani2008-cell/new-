@@ -1,0 +1,618 @@
+# IronLog — Bug Fix Prompt for Replit Agent
+
+I have read every file in this codebase carefully. Below are the exact bugs
+found and the exact fixes required. Do NOT rebuild anything from scratch.
+Make only the targeted changes described. Each bug has the file path,
+the problem, and the exact fix.
+
+---
+
+## BUG 1 — Profile Reset Button Does Nothing
+**File:** `artifacts/mobile/app/(tabs)/profile.tsx`
+
+**Problem:** The `handleReset` function only calls `db.markOnboardingComplete()`
+which does the OPPOSITE of a reset — it marks onboarding as done. It never
+clears any AsyncStorage data, never updates React state, and never navigates
+anywhere. Pressing Reset All Data does nothing visible to the user.
+
+**Fix:** Replace the `handleReset` function body entirely:
+
+```ts
+const handleReset = () => {
+  Alert.alert(
+    'Reset All Data',
+    'This will permanently delete all your workout history, personal records, and settings. This cannot be undone.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.clear();
+          router.replace('/onboarding');
+        },
+      },
+    ]
+  );
+};
+```
+
+Also add `AsyncStorage` to imports at the top of the file:
+```ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+```
+
+---
+
+## BUG 2 — Workout Summary Screen Gets Stuck / Shows Wrong Data
+**File:** `artifacts/mobile/app/workout/summary.tsx`
+
+**Problem:** The summary screen reads `sessions[0]` from UserContext to get
+the last session. But `router.replace('/workout/summary')` is called in
+`active.tsx` immediately after `await addSession(session)`. Due to React's
+async state batching, `sessions[0]` in UserContext may not yet reflect the
+newly saved session by the time SummaryScreen mounts. The screen sometimes
+shows nothing or the wrong previous session.
+
+**Fix:** Pass the completed session data directly via router params instead
+of reading from context state.
+
+In `artifacts/mobile/app/workout/active.tsx`, change the navigation call
+inside `finishWorkout()`:
+
+```ts
+// BEFORE:
+await addSession(session);
+cancelWorkout();
+router.replace('/workout/summary');
+
+// AFTER:
+await addSession(session);
+cancelWorkout();
+router.replace({
+  pathname: '/workout/summary',
+  params: { sessionId: session.id },
+});
+```
+
+In `artifacts/mobile/app/workout/summary.tsx`, read from both params AND
+context as a fallback:
+
+```ts
+import { useLocalSearchParams } from 'expo-router';
+
+export default function SummaryScreen() {
+  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const { sessions } = useUser();
+
+  // Find by ID first, fall back to most recent
+  const lastSession = sessionId
+    ? sessions.find((s) => s.id === sessionId) ?? sessions[0]
+    : sessions[0];
+  // ... rest of component unchanged
+```
+
+---
+
+## BUG 3 — AI Coach Has No Workout Plan Builder Tab
+**File:** `artifacts/mobile/app/(tabs)/ai-coach.tsx`
+
+**Problem:** The AI Coach screen is only a chat interface. There is no way
+to generate and save a workout plan from the AI. Users have no plan builder
+tab and no way to use AI-generated plans in their workout sessions. The
+`generateWorkoutPlan` function exists in `services/ai.ts` but is never called
+from any UI.
+
+**Fix:** Add a second tab to the AI Coach screen — "CHAT" and "PLAN BUILDER".
+
+Replace the entire `AICoachScreen` component with a version that has two
+sub-tabs at the top. The CHAT tab is the existing chat interface (move it
+unchanged). The PLAN BUILDER tab is new:
+
+```
+PLAN BUILDER tab layout:
+─────────────────────────────────
+Days per week:    [3] [4] [5] [6]    ← segmented buttons, single select
+Equipment:        [picker/select]
+                  options: Full Gym / Barbell Only / Dumbbells Only / Bodyweight
+Goal:             [picker/select]
+                  options: Build Muscle / Strength / Fat Loss / Athletic
+Focus area:       [text input, e.g. "Upper body and legs"]
+
+[✨ Generate AI Plan]    ← full-width button, accent color (#E8FE54 or colors.primary)
+─────────────────────────────────
+```
+
+State for plan builder tab:
+```ts
+const [daysPerWeek, setDaysPerWeek] = useState(4);
+const [equipment, setEquipment] = useState('Full Gym');
+const [goal, setGoal] = useState('Build Muscle');
+const [focusArea, setFocusArea] = useState('');
+const [generatedPlan, setGeneratedPlan] = useState<PlannedWorkout[] | null>(null);
+const [planName, setPlanName] = useState('');
+const [generating, setGenerating] = useState(false);
+```
+
+Generate button handler:
+```ts
+const handleGeneratePlan = async () => {
+  if (!profile) {
+    Alert.alert('Setup Required', 'Complete your profile setup first.');
+    return;
+  }
+  setGenerating(true);
+  setGeneratedPlan(null);
+  try {
+    const plan = await generateWorkoutPlan(
+      profile,
+      daysPerWeek,
+      equipment,
+      focusArea || goal,
+      sessions.slice(0, 8)
+    );
+    if (plan) {
+      setGeneratedPlan(plan);
+      setPlanName(`${daysPerWeek}-Day ${goal} Plan`);
+    } else {
+      Alert.alert(
+        'AI Unavailable',
+        'Could not generate plan. Make sure Anthropic integration is activated in your Replit project settings under Tools → Integrations.'
+      );
+    }
+  } finally {
+    setGenerating(false);
+  }
+};
+```
+
+After successful generation, show the plan as day-by-day cards below the
+form. Each card shows the day name and a list of "Exercise × sets × reps".
+Below all cards, show two buttons:
+- "Save Plan" → calls `savePlanToStorage()` and shows Alert "Plan saved!"
+- "Regenerate" → calls `handleGeneratePlan()` again
+
+Save plan handler:
+```ts
+const savePlanToStorage = async () => {
+  if (!generatedPlan) return;
+  const plan: WorkoutPlan = {
+    id: Date.now().toString(),
+    name: planName || 'AI Generated Plan',
+    createdByAI: true,
+    createdAt: new Date().toISOString(),
+    workouts: generatedPlan,
+  };
+  await savePlan(plan);   // import savePlan from '@/services/database'
+  Alert.alert('Saved!', 'Your plan has been saved. Find it in the Log tab.');
+};
+```
+
+Import `generateWorkoutPlan` from `@/services/ai` and `savePlan` from
+`@/services/database` and `WorkoutPlan` from `@/types`.
+
+---
+
+## BUG 4 — Home Screen Shows Hardcoded Quick Workouts Instead of Saved Plans
+**File:** `artifacts/mobile/app/(tabs)/index.tsx`
+
+**Problem:** The home screen has a hardcoded `QUICK_WORKOUTS` array with
+Push Day / Pull Day / Leg Day / Upper Body. These are not the user's own
+plans. Users have no way to access their AI-generated or custom saved plans
+from the home screen. The `getPlans()` database function exists but is never
+called from the home screen.
+
+**Fix:**
+
+1. Remove the hardcoded `QUICK_WORKOUTS` constant entirely.
+
+2. In `HomeScreen`, load saved plans from the database:
+```ts
+const [savedPlans, setSavedPlans] = useState<WorkoutPlan[]>([]);
+
+useEffect(() => {
+  getPlans().then(setSavedPlans);
+}, []);
+```
+Import `getPlans` from `@/services/database` and `WorkoutPlan` from `@/types`.
+
+3. Replace the "Quick Start" section rendering:
+
+```tsx
+{/* My Plans / Quick Start */}
+<Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+  My Plans
+</Text>
+
+{savedPlans.length === 0 ? (
+  <TouchableOpacity
+    onPress={() => router.push('/(tabs)/ai-coach')}
+    style={[styles.emptyPlansCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    activeOpacity={0.7}
+  >
+    <Feather name="plus-circle" size={24} color={colors.primary} />
+    <View>
+      <Text style={[styles.emptyPlansTitle, { color: colors.foreground }]}>
+        No plans yet
+      </Text>
+      <Text style={[styles.emptyPlansSub, { color: colors.mutedForeground }]}>
+        Tap to create one with AI Coach
+      </Text>
+    </View>
+    <Feather name="chevron-right" size={18} color={colors.mutedForeground} style={{ marginLeft: 'auto' }} />
+  </TouchableOpacity>
+) : (
+  savedPlans.map((plan) => (
+    <View
+      key={plan.id}
+      style={[styles.planCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.planName, { color: colors.foreground }]}>
+          {plan.name}
+        </Text>
+        <Text style={[styles.planMeta, { color: colors.mutedForeground }]}>
+          {plan.workouts.length} days · {plan.createdByAI ? 'AI generated' : 'Custom'}
+        </Text>
+      </View>
+      {/* Show each workout day as a start button */}
+      {plan.workouts.map((workout, wi) => (
+        <TouchableOpacity
+          key={wi}
+          onPress={() => handleStartPlanWorkout(plan, workout)}
+          style={[styles.dayBtn, { backgroundColor: colors.primary }]}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.dayBtnText, { color: colors.background }]}>
+            {workout.name}
+          </Text>
+          <Feather name="play" size={14} color={colors.background} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  ))
+)}
+```
+
+4. Add the `handleStartPlanWorkout` function:
+```ts
+const handleStartPlanWorkout = (plan: WorkoutPlan, workout: PlannedWorkout) => {
+  // Convert PlannedExercise[] to ActiveExercise[]
+  // Match by name against the EXERCISES constant
+  const exList: ActiveExercise[] = workout.exercises.map((pe) => {
+    const found = EXERCISES.find(
+      (e) => e.name.toLowerCase() === pe.name.toLowerCase()
+    );
+    return {
+      exerciseId: found?.id ?? pe.name.toLowerCase().replace(/\s+/g, '_'),
+      exerciseName: pe.name,
+      muscleGroup: found?.muscleGroup ?? 'Other',
+      notes: pe.notes ?? '',
+      sets: Array.from({ length: pe.sets }, () => ({
+        weight: '',
+        reps: '',
+        completed: false,
+      })),
+    };
+  });
+  startWorkout(workout.name, exList);
+  router.push('/workout/active');
+};
+```
+
+Import `PlannedWorkout`, `WorkoutPlan`, `ActiveExercise` from `@/types`.
+
+Add these new styles to the StyleSheet:
+```ts
+emptyPlansCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  padding: 16,
+  borderRadius: 12,
+  borderWidth: 1,
+  gap: 12,
+  marginHorizontal: 20,
+},
+emptyPlansTitle: { fontSize: 15, fontWeight: '700' },
+emptyPlansSub: { fontSize: 13, marginTop: 2 },
+planCard: {
+  padding: 16,
+  borderRadius: 12,
+  borderWidth: 1,
+  gap: 10,
+  marginHorizontal: 20,
+},
+planName: { fontSize: 16, fontWeight: '700' },
+planMeta: { fontSize: 12, marginTop: 2 },
+dayBtn: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  borderRadius: 8,
+  gap: 6,
+},
+dayBtnText: { fontSize: 14, fontWeight: '700', flex: 1 },
+```
+
+---
+
+## BUG 5 — No Log Out Functionality
+**File:** `artifacts/mobile/app/(tabs)/profile.tsx`
+
+**Problem:** There is no log out button anywhere. The only data-clearing option
+is "Reset All Data" which is destructive. Users cannot sign out and return to
+the onboarding screen without losing all their data.
+
+**Fix:** Add a Log Out button at the bottom of the profile screen, above the
+Reset All Data button.
+
+Add this handler function:
+```ts
+const handleLogOut = () => {
+  Alert.alert(
+    'Log Out',
+    'You will be taken back to the setup screen. Your workout data will be kept.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'default',
+        onPress: async () => {
+          await AsyncStorage.multiRemove([
+            '@ironlog:user_profile',
+            '@ironlog:onboarding_complete',
+          ]);
+          router.replace('/onboarding');
+        },
+      },
+    ]
+  );
+};
+```
+
+Add `AsyncStorage` import (if not already added from Bug 1 fix):
+```ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+```
+
+Add the button JSX just above the existing Reset button:
+```tsx
+{/* Log Out */}
+<TouchableOpacity
+  onPress={handleLogOut}
+  style={[
+    styles.logoutBtn,
+    { backgroundColor: colors.card, borderColor: colors.border },
+  ]}
+  activeOpacity={0.7}
+>
+  <Feather name="log-out" size={16} color={colors.mutedForeground} />
+  <Text style={[styles.logoutText, { color: colors.mutedForeground }]}>
+    Log Out
+  </Text>
+</TouchableOpacity>
+```
+
+Add to StyleSheet:
+```ts
+logoutBtn: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+  padding: 16,
+  borderRadius: 12,
+  borderWidth: 1,
+},
+logoutText: { fontSize: 15, fontWeight: '600' },
+```
+
+---
+
+## BUG 6 — AI Backend Uses Wrong Model Name
+**File:** `artifacts/api-server/src/routes/ai.ts`
+
+**Problem:** Both endpoints use `model: "claude-sonnet-4-6"` which is not a
+valid Anthropic model identifier. The correct identifier is
+`"claude-sonnet-4-20250514"`. This causes all AI API calls to return a 400
+error from Anthropic, making both the chat and plan generation completely
+non-functional.
+
+**Fix:** In `artifacts/api-server/src/routes/ai.ts`, find all occurrences of:
+```
+model: "claude-sonnet-4-6"
+```
+And replace every one with:
+```
+model: "claude-sonnet-4-20250514"
+```
+There are two occurrences — one in the `/chat` route and one in the
+`/generate-plan` route. Replace both.
+
+---
+
+## BUG 7 — AI Generate Plan Response Parsing Too Fragile
+**File:** `artifacts/api-server/src/routes/ai.ts`
+
+**Problem:** The `/generate-plan` endpoint uses `text.match(/\{[\s\S]*\}/)` to
+extract JSON. If Claude wraps the response in markdown code fences
+(` ```json ... ``` `) or adds any explanation text, this regex will fail to
+extract the correct JSON, causing a 500 error. There is also no try-catch
+around `JSON.parse()`, so a malformed JSON response crashes the endpoint.
+
+**Fix:** Replace the response parsing block in the `/generate-plan` route:
+
+```ts
+// BEFORE:
+const text = data.content?.[0]?.text ?? '';
+const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+if (jsonMatch) {
+  const parsed = JSON.parse(jsonMatch[0]) as { plan_name: string; workouts: unknown[] };
+  res.json(parsed);
+} else {
+  res.status(500).json({ error: 'Could not parse AI response' });
+}
+
+// AFTER:
+let text = data.content?.[0]?.text ?? '';
+
+// Strip markdown code fences if present
+text = text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+
+// Extract the JSON object
+const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+if (!jsonMatch) {
+  res.status(500).json({
+    error: 'AI did not return valid JSON',
+    preview: text.slice(0, 300),
+  });
+  return;
+}
+
+try {
+  const parsed = JSON.parse(jsonMatch[0]) as { plan_name: string; workouts: unknown[] };
+  if (!parsed.workouts || !Array.isArray(parsed.workouts)) {
+    res.status(500).json({ error: 'AI response missing workouts array' });
+    return;
+  }
+  res.json(parsed);
+} catch (parseErr) {
+  res.status(500).json({
+    error: 'JSON parse failed',
+    preview: jsonMatch[0].slice(0, 300),
+  });
+}
+```
+
+---
+
+## BUG 8 — Active Workout: completeSet Does Not Trigger Rest Timer
+**File:** `artifacts/mobile/app/workout/active.tsx`
+
+**Problem:** In the `ExerciseBlock` component (rendered for each exercise),
+the `onCompleteSet` callback calls `completeSet(exIdx, setIdx)` from
+WorkoutContext. This toggles the set's completed state correctly. BUT it never
+calls `startRestTimer(exIdx)`. The rest timer in WorkoutContext is never
+started after a set is completed. Users complete sets and the rest timer
+bottom sheet never appears.
+
+**Find this line in the ExerciseBlock's onCompleteSet handler:**
+```ts
+const onCompleteSet = (exIdx: number, setIdx: number) => {
+  completeSet(exIdx, setIdx);
+};
+```
+
+**Replace with:**
+```ts
+const onCompleteSet = (exIdx: number, setIdx: number) => {
+  completeSet(exIdx, setIdx);
+  // Only start rest timer when completing (not un-completing) a set
+  // We know it's completing if the set was NOT completed before
+  const wasCompleted = activeSession?.exercises[exIdx]?.sets[setIdx]?.completed;
+  if (!wasCompleted) {
+    const restDuration = profile?.restDuration ?? 90;
+    startRestTimer(exIdx, restDuration);
+  }
+};
+```
+
+Note: `profile` is already destructured from `useUser()` in this component.
+`startRestTimer` is already destructured from `useWorkout()`.
+This fix just needs to call `startRestTimer` after `completeSet`.
+
+---
+
+## BUG 9 — Active Workout: Exercise Blocks Are Missing `muscleGroupColors` Variable
+**File:** `artifacts/mobile/app/workout/active.tsx`
+
+**Problem:** The `ExerciseBlock` sub-component uses `muscleColor` variable
+which comes from `MUSCLE_GROUP_COLORS[exercise.muscleGroup]`. If a muscle
+group is not found in the map, `muscleColor` is `undefined`. Then
+`backgroundColor: muscleColor + "22"` becomes `"undefined22"` which is an
+invalid color string. This causes a React Native style warning and the muscle
+group badge renders with a broken background.
+
+**Fix:** Add a fallback in ExerciseBlock:
+```ts
+// BEFORE (find this line):
+const muscleColor = MUSCLE_GROUP_COLORS[exercise.muscleGroup];
+
+// AFTER:
+const muscleColor = MUSCLE_GROUP_COLORS[exercise.muscleGroup] ?? '#888888';
+```
+
+---
+
+## BUG 10 — Profile Screen: Weight Unit Toggle Does Not Persist
+**File:** `artifacts/mobile/app/(tabs)/profile.tsx`
+
+**Problem:** The `weightUnit` and `heightUnit` toggles in Profile call
+`setWeightUnit()` and `setHeightUnit()` to update local component state, and
+set `setEdited(true)`. But `handleSave()` is only called when the user
+explicitly taps a "Save" button. However — looking at the profile screen JSX —
+there is no "Save" button rendered when `edited` is true. The `edited` state
+is tracked but the save button that uses it is missing from the UI. Users
+change their unit preference and it never saves.
+
+**Fix:** At the bottom of the settings section, add a save button that
+appears when `edited` is true:
+
+```tsx
+{edited && (
+  <TouchableOpacity
+    onPress={handleSave}
+    style={[
+      styles.saveBtn,
+      { backgroundColor: colors.primary, borderRadius: colors.radius },
+    ]}
+    activeOpacity={0.85}
+  >
+    <Text style={[styles.saveBtnText, { color: colors.background }]}>
+      Save Settings
+    </Text>
+  </TouchableOpacity>
+)}
+```
+
+Add to StyleSheet:
+```ts
+saveBtn: {
+  height: 52,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+saveBtnText: { fontSize: 16, fontWeight: '700' },
+```
+
+---
+
+## AFTER ALL FIXES — VERIFY THESE THINGS WORK
+
+1. Go to Profile → change Weight Unit from kg to lbs → "Save Settings" button 
+   appears → tap it → refresh app → unit should still be lbs ✓
+   
+2. Go to Profile → scroll to bottom → "Log Out" button is visible → tap it → 
+   alert appears with "Your workout data will be kept" message → confirm → 
+   app goes to onboarding screen ✓
+
+3. Go to Profile → "Reset All Data" → confirm → app goes to onboarding and 
+   all data is cleared ✓
+
+4. Go to AI Coach → tap "PLAN BUILDER" tab → fill in 4 days, Full Gym, 
+   Build Muscle → tap "Generate AI Plan" → loading indicator shows → plan 
+   appears as day cards → "Save Plan" saves it ✓
+
+5. Go to Home → if a plan is saved it shows there → tap a day button → 
+   active workout starts with that day's exercises pre-loaded ✓
+
+6. In active workout → log a set weight and reps → tap ✓ → set highlights → 
+   rest timer appears at bottom ✓
+
+7. In active workout → tap Finish → if sets are complete → confirmation alert → 
+   confirm → summary screen shows the correct just-completed workout data ✓
+
+8. Check the API server logs — no more "model not found" errors from Anthropic ✓
